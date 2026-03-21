@@ -18,5 +18,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY dashboard ./dashboard
+COPY scripts ./scripts
+
+RUN mkdir -p /workspace/.data \
+    && chmod +x /workspace/scripts/*.sh
 
 ENV PYTHONPATH=/workspace

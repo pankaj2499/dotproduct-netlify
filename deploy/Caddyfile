@@ -1,0 +1,5 @@
+{$DOTPRODUCT_DOMAIN:localhost} {
+    encode gzip zstd
+
+    reverse_proxy dashboard:8501
+}

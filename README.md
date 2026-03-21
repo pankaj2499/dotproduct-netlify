@@ -187,6 +187,67 @@ What it shows:
 - PySpark jobs run in the worker container in `local[*]` mode
 - The dashboard will show the actual runtime platform used by the worker
 
+## Production Deployment
+
+This repository is not a Netlify-style static or frontend-only app. The deployed dashboard depends on long-running Python services plus a shared SQLite metadata file:
+
+- `dashboard`: Streamlit UI
+- `worker`: Celery job runner
+- `redis`: broker/result backend
+- `weaviate`: vector database
+- shared `/workspace/.data/dotproduct.sqlite3` volume for dashboard + worker
+
+Because the dashboard and worker both need the same SQLite file, the correct deployment target is a single VM running Docker Compose, not a split frontend PaaS.
+
+### Prepared Deployment Bundle
+
+The repo includes:
+
+- `docker-compose.prod.yml`: production stack for one VM
+- `deploy/Caddyfile`: reverse proxy and TLS entrypoint
+- `scripts/start-dashboard.sh`: Streamlit startup command
+- `scripts/start-worker.sh`: Celery worker startup command
+
+### VM Deployment Steps
+
+1. Provision a Linux VM with Docker Engine and the Docker Compose plugin installed.
+2. Point your DNS record to the VM.
+3. Clone this repo on the VM.
+4. Create an environment file:
+
+```bash
+cat > .env.prod <<'EOF'
+DOTPRODUCT_DOMAIN=your-domain.example.com
+OPENAI_API_KEY=
+EOF
+```
+
+5. Start the stack:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
+6. Inspect service health:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f dashboard
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f worker
+```
+
+### What Is Exposed Publicly
+
+- `caddy`: public HTTP/HTTPS on ports `80` and `443`
+- `dashboard`: only reachable through Caddy
+- `redis` and `weaviate`: internal-only inside the Compose network
+
+### Notes
+
+- The production stack intentionally does not publish Jupyter.
+- Caddy will automatically manage TLS for a real domain set via `DOTPRODUCT_DOMAIN`.
+- Dashboard and worker share the `dotproduct_data` volume so SQLite state stays consistent across both services.
+
 ## Stop
 
 ```bash

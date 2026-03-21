@@ -1,0 +1,88 @@
+name: dotproduct-prod
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.35.2
+    restart: unless-stopped
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      CLUSTER_HOSTNAME: node1
+      DEFAULT_VECTORIZER_MODULE: none
+      ENABLE_API_BASED_MODULES: "false"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      QUERY_DEFAULTS_LIMIT: 25
+    expose:
+      - "8080"
+      - "50051"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+
+  worker:
+    build:
+      context: .
+    restart: unless-stopped
+    command: /workspace/scripts/start-worker.sh
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DOTPRODUCT_CLUSTER_TASK_NAME: app.tasks.run_weaviate_cluster_workload
+      DOTPRODUCT_METADATA_DB: /workspace/.data/dotproduct.sqlite3
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PYTHONPATH: /workspace
+      WEAVIATE_GRPC_PORT: 50051
+      WEAVIATE_HOST: weaviate
+      WEAVIATE_PORT: 8080
+    depends_on:
+      - redis
+      - weaviate
+    volumes:
+      - dotproduct_data:/workspace/.data
+
+  dashboard:
+    build:
+      context: .
+    restart: unless-stopped
+    command: /workspace/scripts/start-dashboard.sh
+    environment:
+      DOTPRODUCT_METADATA_DB: /workspace/.data/dotproduct.sqlite3
+      PORT: 8501
+      PYTHONPATH: /workspace
+      WEAVIATE_GRPC_PORT: 50051
+      WEAVIATE_HOST: weaviate
+      WEAVIATE_PORT: 8080
+    depends_on:
+      - worker
+      - weaviate
+    expose:
+      - "8501"
+    volumes:
+      - dotproduct_data:/workspace/.data
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - dashboard
+    environment:
+      DOTPRODUCT_DOMAIN: ${DOTPRODUCT_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_config:
+  caddy_data:
+  dotproduct_data:
+  redis_data:
+  weaviate_data:
