@@ -10,22 +10,22 @@ from weaviate.dotproduct import DotproductStore
 APP_STYLE = """
 <style>
 :root {
-    --bg: #07111a;
-    --bg-elevated: rgba(12, 23, 36, 0.86);
-    --bg-panel: rgba(16, 30, 45, 0.92);
-    --border: rgba(129, 164, 191, 0.18);
-    --text-main: #ecf3f8;
-    --text-muted: #97acbc;
-    --accent: #ff8a5b;
-    --accent-cool: #57d3ff;
+    --bg: #13100b;
+    --bg-elevated: rgba(38, 26, 14, 0.86);
+    --bg-panel: rgba(31, 22, 12, 0.94);
+    --border: rgba(226, 180, 121, 0.20);
+    --text-main: #fff3df;
+    --text-muted: #d8be93;
+    --accent: #ff9f1c;
+    --accent-cool: #4ecdc4;
     --shadow: 0 18px 40px rgba(1, 8, 15, 0.45);
 }
 .stApp {
     background:
-        radial-gradient(circle at top left, rgba(87, 211, 255, 0.15), transparent 24%),
-        radial-gradient(circle at top right, rgba(255, 138, 91, 0.14), transparent 22%),
-        radial-gradient(circle at bottom center, rgba(115, 80, 255, 0.14), transparent 28%),
-        linear-gradient(180deg, #08131d 0%, #050b12 100%);
+        radial-gradient(circle at top left, rgba(78, 205, 196, 0.20), transparent 28%),
+        radial-gradient(circle at top right, rgba(255, 159, 28, 0.18), transparent 25%),
+        radial-gradient(circle at bottom center, rgba(237, 66, 69, 0.15), transparent 30%),
+        linear-gradient(180deg, #1e150d 0%, #100b06 100%);
     color: var(--text-main);
     font-family: "Avenir Next", "Segoe UI", sans-serif;
 }
@@ -43,7 +43,7 @@ p, label, .stCaption {
 }
 section[data-testid="stSidebar"] {
     background:
-        linear-gradient(180deg, rgba(11, 22, 34, 0.96) 0%, rgba(7, 15, 25, 0.98) 100%);
+        linear-gradient(180deg, rgba(31, 22, 12, 0.97) 0%, rgba(17, 12, 7, 0.99) 100%);
     border-right: 1px solid var(--border);
 }
 section[data-testid="stSidebar"] * {
@@ -51,7 +51,7 @@ section[data-testid="stSidebar"] * {
 }
 div[data-testid="stMetric"] {
     background:
-        linear-gradient(180deg, rgba(19, 34, 49, 0.95) 0%, rgba(12, 22, 33, 0.9) 100%);
+        linear-gradient(180deg, rgba(46, 31, 17, 0.96) 0%, rgba(33, 23, 13, 0.92) 100%);
     border: 1px solid var(--border);
     border-radius: 20px;
     padding: 0.9rem 1rem;
@@ -83,16 +83,16 @@ div[data-baseweb="select"] > div,
 div[data-baseweb="input"] > div,
 div[data-testid="stNumberInput"] input,
 div[data-testid="stTextInput"] input {
-    background: rgba(10, 20, 31, 0.92);
+    background: rgba(28, 19, 11, 0.94);
     border-color: var(--border);
     color: var(--text-main);
 }
 div[data-baseweb="tag"] {
-    background: rgba(87, 211, 255, 0.12);
-    border: 1px solid rgba(87, 211, 255, 0.22);
+    background: rgba(78, 205, 196, 0.16);
+    border: 1px solid rgba(78, 205, 196, 0.28);
 }
 .stButton > button {
-    background: linear-gradient(135deg, var(--accent), #ff5d8f);
+    background: linear-gradient(135deg, var(--accent), #ffd166);
     border: none;
     color: #091119;
     font-weight: 700;

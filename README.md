@@ -22,7 +22,7 @@ Dashboard         -> SQLite   -> job list and job details
 - `worker`: Celery worker that actually runs jobs
 - `redis`: queue + Celery result backend
 - `weaviate`: local vector database
-- `dashboard`: Streamlit UI for jobs, metrics, and cluster results
+- `dashboard`: Streamlit product frontend for semantic search, classification, clustering, anomaly detection, and job details
 
 ## Ports
 
@@ -33,14 +33,6 @@ Dashboard         -> SQLite   -> job list and job details
 - Dashboard: `http://localhost:8502`
 
 If `8502` is not what you want, set `DOTPRODUCT_DASHBOARD_PORT` before starting Compose.
-
-## How It Runs
-
-- The notebook does not execute heavy jobs itself.
-- Jobs are submitted from the notebook container.
-- The worker container executes them.
-- Workload metadata is stored in `/workspace/.data/dotproduct.sqlite3`.
-- The dashboard reads the same SQLite database.
 
 ## Start
 
@@ -174,12 +166,20 @@ http://localhost:8502
 
 What it shows:
 
-- Job status
-- Wall time and CPU time
-- RSS memory before and after execution
-- Submission platform and runtime platform
-- Stored cluster plots
-- Job details page with individual cluster members
+- Semantic similarity search over stored embeddings
+- Classification workflow from labeled embeddings
+- Clustering workflow with distribution and projection views
+- Anomaly detection for outlier vectors
+- Job status, runtime metrics, and detailed workload inspection
+
+### Frontend Pages
+
+- `dashboard/app.py`: product console home and capability map
+- `dashboard/pages/2_Semantic_Search.py`: cosine-similarity search
+- `dashboard/pages/3_Classification.py`: logistic-regression classification
+- `dashboard/pages/4_Clustering.py`: KMeans clustering exploration
+- `dashboard/pages/5_Anomaly_Detection.py`: Isolation Forest outlier detection
+- `dashboard/pages/1_Job_Details.py`: detailed workload drill-down
 
 ## Worker Behavior
 
