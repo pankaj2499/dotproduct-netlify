@@ -37,6 +37,8 @@ class DotproductSettings:
             "DOTPRODUCT_CELERY_RESULT_BACKEND",
             os.getenv("CELERY_RESULT_BACKEND", self.celery_broker_url),
         )
+        self.submission_platform = os.getenv("DOTPRODUCT_SUBMISSION_PLATFORM", "jupyter-notebook")
+        self.runtime_platform = os.getenv("DOTPRODUCT_RUNTIME_PLATFORM", "celery-worker+scikit-learn")
 
 
 class DotproductStore:
@@ -114,6 +116,41 @@ class DotproductStore:
                 );
                 """
             )
+            self._ensure_column(conn, "workloads", "started_at", "TEXT")
+            self._ensure_column(conn, "workloads", "completed_at", "TEXT")
+            self._ensure_column(conn, "workloads", "wall_time_ms", "INTEGER")
+            self._ensure_column(conn, "workloads", "cpu_time_ms", "INTEGER")
+            self._ensure_column(conn, "workloads", "rss_before_bytes", "INTEGER")
+            self._ensure_column(conn, "workloads", "rss_after_bytes", "INTEGER")
+            self._ensure_column(conn, "workloads", "rss_peak_bytes", "INTEGER")
+            self._ensure_column(conn, "workloads", "error_message", "TEXT")
+            self._ensure_column(conn, "workloads", "result_json", "TEXT")
+            self._ensure_column(conn, "workloads", "submission_platform", "TEXT")
+            self._ensure_column(conn, "workloads", "runtime_platform", "TEXT")
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_workloads_status_created_at
+                ON workloads(status, created_at DESC)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_workloads_collection_created_at
+                ON workloads(collection, created_at DESC)
+                """
+            )
+
+    def _ensure_column(
+        self,
+        conn: sqlite3.Connection,
+        table_name: str,
+        column_name: str,
+        column_type: str,
+    ) -> None:
+        columns = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        if any(column["name"] == column_name for column in columns):
+            return
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
     def upsert_object(
         self,
@@ -168,6 +205,8 @@ class DotproductStore:
         params: Mapping[str, Any],
         query: Mapping[str, Any],
         members: Sequence[tuple[str, Optional[float]]],
+        submission_platform: Optional[str] = None,
+        runtime_platform: Optional[str] = None,
     ) -> str:
         workload_id = str(uuid_package.uuid4())
         now = _utcnow()
@@ -176,8 +215,8 @@ class DotproductStore:
                 """
                 INSERT INTO workloads (
                     workload_id, collection, tenant, kind, algorithm, params_json, query_json,
-                    status, executor_task_id, created_at, updated_at
-                ) VALUES (?, ?, ?, 'cluster', ?, ?, ?, 'queued', NULL, ?, ?)
+                    status, executor_task_id, created_at, updated_at, submission_platform, runtime_platform
+                ) VALUES (?, ?, ?, 'cluster', ?, ?, ?, 'queued', NULL, ?, ?, ?, ?)
                 """,
                 (
                     workload_id,
@@ -188,6 +227,8 @@ class DotproductStore:
                     json.dumps(query),
                     now,
                     now,
+                    submission_platform,
+                    runtime_platform,
                 ),
             )
             conn.executemany(
@@ -226,6 +267,73 @@ class DotproductStore:
                 (status, now, workload_id),
             )
 
+    def mark_workload_running(
+        self,
+        workload_id: str,
+        *,
+        started_at: Optional[str] = None,
+        rss_before_bytes: Optional[int] = None,
+    ) -> None:
+        now = _utcnow()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE workloads
+                SET status = 'running',
+                    started_at = COALESCE(started_at, ?),
+                    rss_before_bytes = COALESCE(?, rss_before_bytes),
+                    updated_at = ?
+                WHERE workload_id = ?
+                """,
+                (started_at or now, rss_before_bytes, now, workload_id),
+            )
+
+    def complete_workload(
+        self,
+        workload_id: str,
+        *,
+        status: str,
+        completed_at: Optional[str] = None,
+        metrics: Optional[Mapping[str, Any]] = None,
+        result: Optional[Mapping[str, Any]] = None,
+        error_message: Optional[str] = None,
+        runtime_platform: Optional[str] = None,
+    ) -> None:
+        now = _utcnow()
+        metrics = dict(metrics or {})
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE workloads
+                SET status = ?,
+                    completed_at = ?,
+                    wall_time_ms = ?,
+                    cpu_time_ms = ?,
+                    rss_before_bytes = COALESCE(?, rss_before_bytes),
+                    rss_after_bytes = ?,
+                    rss_peak_bytes = ?,
+                    error_message = ?,
+                    result_json = ?,
+                    runtime_platform = COALESCE(?, runtime_platform),
+                    updated_at = ?
+                WHERE workload_id = ?
+                """,
+                (
+                    status,
+                    completed_at or now,
+                    metrics.get("wall_time_ms"),
+                    metrics.get("cpu_time_ms"),
+                    metrics.get("rss_before_bytes"),
+                    metrics.get("rss_after_bytes"),
+                    metrics.get("rss_peak_bytes"),
+                    error_message,
+                    json.dumps(result) if result is not None else None,
+                    runtime_platform,
+                    now,
+                    workload_id,
+                ),
+            )
+
     def get_workload(self, workload_id: str) -> dict[str, Any]:
         with self._connect() as conn:
             row = conn.execute(
@@ -237,7 +345,88 @@ class DotproductStore:
         result = dict(row)
         result["params"] = json.loads(result.pop("params_json"))
         result["query"] = json.loads(result.pop("query_json"))
+        result_json = result.pop("result_json")
+        result["result"] = json.loads(result_json) if result_json else None
         return result
+
+    def list_workloads(
+        self,
+        *,
+        limit: int = 100,
+        statuses: Optional[Sequence[str]] = None,
+        collections: Optional[Sequence[str]] = None,
+    ) -> list[dict[str, Any]]:
+        filters: list[str] = []
+        values: list[Any] = []
+        if statuses:
+            filters.append(f"w.status IN ({','.join('?' for _ in statuses)})")
+            values.extend(statuses)
+        if collections:
+            filters.append(f"w.collection IN ({','.join('?' for _ in collections)})")
+            values.extend(collections)
+
+        where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
+        query = f"""
+            SELECT
+                w.*,
+                (
+                    SELECT COUNT(*)
+                    FROM workload_members wm
+                    WHERE wm.workload_id = w.workload_id
+                ) AS member_count,
+                (
+                    SELECT COUNT(*)
+                    FROM cluster_results cr
+                    WHERE cr.workload_id = w.workload_id
+                ) AS result_count,
+                EXISTS(
+                    SELECT 1
+                    FROM workload_artifacts wa
+                    WHERE wa.workload_id = w.workload_id
+                      AND wa.artifact_type = 'cluster_plot'
+                ) AS has_cluster_plot
+            FROM workloads w
+            {where_sql}
+            ORDER BY w.created_at DESC
+            LIMIT ?
+        """
+        values.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(query, values).fetchall()
+
+        workloads: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["params"] = json.loads(item.pop("params_json"))
+            item["query"] = json.loads(item.pop("query_json"))
+            result_json = item.pop("result_json")
+            item["result"] = json.loads(result_json) if result_json else None
+            workloads.append(item)
+        return workloads
+
+    def summarize_workloads(self) -> dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_workloads,
+                    SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued_workloads,
+                    SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running_workloads,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_workloads,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_workloads,
+                    AVG(wall_time_ms) AS avg_wall_time_ms,
+                    AVG(cpu_time_ms) AS avg_cpu_time_ms,
+                    AVG(
+                        CASE
+                            WHEN rss_after_bytes IS NOT NULL AND rss_before_bytes IS NOT NULL
+                            THEN rss_after_bytes - rss_before_bytes
+                            ELSE NULL
+                        END
+                    ) AS avg_rss_delta_bytes
+                FROM workloads
+                """
+            ).fetchone()
+        return dict(row) if row is not None else {}
 
     def get_workload_members(self, workload_id: str) -> list[dict[str, Any]]:
         with self._connect() as conn:

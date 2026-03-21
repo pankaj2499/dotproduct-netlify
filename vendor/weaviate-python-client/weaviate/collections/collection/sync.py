@@ -31,7 +31,7 @@ from weaviate.collections.iterator import _IteratorInputs, _ObjectIterator
 from weaviate.collections.query import _QueryCollection
 from weaviate.collections.tenants import _Tenants
 from weaviate.connect.v4 import ConnectionSync
-from weaviate.dotproduct import DotproductStore, submit_cluster_workload
+from weaviate.dotproduct import DotproductSettings, DotproductStore, submit_cluster_workload
 from weaviate.exceptions import UnexpectedStatusCodeError
 from weaviate.types import UUID
 
@@ -299,14 +299,26 @@ class Collection(Generic[Properties, References], _CollectionBase[ConnectionSync
         if not uuids:
             raise ValueError("Search returned no objects to cluster")
 
+        settings = DotproductSettings()
+        params_payload = dict(params or {})
+        submission_platform = str(
+            params_payload.get("submission_platform")
+            or settings.submission_platform
+        )
+        requested_runtime_platform = str(
+            params_payload.get("runtime_platform")
+            or ("pyspark" if algorithm.lower().startswith("spark") else settings.runtime_platform)
+        )
         store = DotproductStore()
         workload_id = store.create_cluster_workload(
             collection=self.name,
             tenant=self.tenant,
             algorithm=algorithm,
-            params=dict(params or {}),
+            params=params_payload,
             query=query_payload,
             members=members,
+            submission_platform=submission_platform,
+            runtime_platform=requested_runtime_platform,
         )
         task_id = submit_cluster_workload(workload_id)
         if task_id is not None:

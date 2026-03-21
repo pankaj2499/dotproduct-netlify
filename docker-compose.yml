@@ -71,5 +71,23 @@ services:
     volumes:
       - .:/workspace
 
+  dashboard:
+    build:
+      context: .
+    command: >
+      streamlit run /workspace/dashboard/app.py
+      --server.address=0.0.0.0
+      --server.port=8501
+      --server.headless=true
+    environment:
+      DOTPRODUCT_METADATA_DB: /workspace/.data/dotproduct.sqlite3
+      PYTHONPATH: /workspace
+    depends_on:
+      - worker
+    ports:
+      - "${DOTPRODUCT_DASHBOARD_PORT:-8502}:8501"
+    volumes:
+      - .:/workspace
+
 volumes:
   weaviate_data:

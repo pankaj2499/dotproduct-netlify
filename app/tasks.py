@@ -1,9 +1,13 @@
 import io
+import resource
+import sys
 from collections import Counter
 import time
+from datetime import datetime, timezone
 
 import matplotlib
 import numpy as np
+import psutil
 from pyspark.sql import SparkSession
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
@@ -13,6 +17,34 @@ from .celery_app import celery_app
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _current_rss_bytes() -> int:
+    return int(psutil.Process().memory_info().rss)
+
+
+def _peak_rss_bytes() -> int:
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return int(peak if sys.platform == "darwin" else peak * 1024)
+
+
+def _capture_execution_metrics(
+    *,
+    wall_started_at: float,
+    cpu_started_at: float,
+    rss_before_bytes: int,
+) -> dict:
+    return {
+        "wall_time_ms": int((time.perf_counter() - wall_started_at) * 1000),
+        "cpu_time_ms": int((time.process_time() - cpu_started_at) * 1000),
+        "rss_before_bytes": int(rss_before_bytes),
+        "rss_after_bytes": _current_rss_bytes(),
+        "rss_peak_bytes": _peak_rss_bytes(),
+    }
 
 
 @celery_app.task(name="app.tasks.long_running_sum")
@@ -164,63 +196,102 @@ def run_weaviate_cluster_workload(workload_id: str) -> dict:
     """Execute a queued cluster workload using vectors recorded in SQLite."""
     store = DotproductStore()
     workload = store.get_workload(workload_id)
-    members = store.get_workload_members(workload_id)
-    points = []
-    for member in members:
-        vector = member["vector"]
-        if isinstance(vector, dict):
-            vector = vector.get("default") or next(iter(vector.values()), None)
-        if vector is not None:
-            points.append((member["uuid"], vector))
-    if len(points) < 2:
-        store.set_workload_status(workload_id, "failed")
-        raise ValueError("At least two stored vectors are required to cluster a workload")
+    runtime_platform = "celery-worker+scikit-learn"
+    started_at = _utcnow()
+    rss_before_bytes = _current_rss_bytes()
+    wall_started_at = time.perf_counter()
+    cpu_started_at = time.process_time()
+    store.mark_workload_running(
+        workload_id,
+        started_at=started_at,
+        rss_before_bytes=rss_before_bytes,
+    )
 
-    requested_k = int(workload["params"].get("k", 3))
-    n_clusters = max(1, min(requested_k, len(points)))
-    should_plot = bool(workload["params"].get("plot", True))
+    try:
+        members = store.get_workload_members(workload_id)
+        points = []
+        for member in members:
+            vector = member["vector"]
+            if isinstance(vector, dict):
+                vector = vector.get("default") or next(iter(vector.values()), None)
+            if vector is not None:
+                points.append((member["uuid"], vector))
+        if len(points) < 2:
+            raise ValueError("At least two stored vectors are required to cluster a workload")
 
-    store.set_workload_status(workload_id, "running")
-    model = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
-    vectors = [vector for _, vector in points]
-    labels = model.fit_predict(vectors).tolist()
+        requested_k = int(workload["params"].get("k", 3))
+        n_clusters = max(1, min(requested_k, len(points)))
+        should_plot = bool(workload["params"].get("plot", True))
 
-    assignments = [(uuid, int(label), None) for (uuid, _), label in zip(points, labels)]
-    store.replace_cluster_results(workload_id, assignments)
-    plot_artifact = None
-    plot_error = None
-    if should_plot:
-        try:
-            plot_bytes, plot_metadata = _build_cluster_plot_png(
-                workload_id=workload_id,
-                vectors=vectors,
-                labels=[int(label) for label in labels],
-            )
-            store.upsert_workload_artifact(
-                workload_id=workload_id,
-                artifact_type="cluster_plot",
-                mime_type="image/png",
-                artifact_blob=plot_bytes,
-                metadata=plot_metadata,
-            )
-            plot_artifact = {
-                "artifact_type": "cluster_plot",
-                "mime_type": "image/png",
-                "metadata": plot_metadata,
-            }
-        except Exception as exc:
-            plot_error = str(exc)
-    store.set_workload_status(workload_id, "completed")
+        model = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
+        vectors = [vector for _, vector in points]
+        labels = model.fit_predict(vectors).tolist()
 
-    cluster_sizes = {
-        str(cluster_id): count
-        for cluster_id, count in sorted(Counter(int(label) for label in labels).items())
-    }
-    return {
-        "workload_id": workload_id,
-        "algorithm": workload["algorithm"],
-        "cluster_sizes": cluster_sizes,
-        "n_clusters": n_clusters,
-        "plot_artifact": plot_artifact,
-        "plot_error": plot_error,
-    }
+        assignments = [(uuid, int(label), None) for (uuid, _), label in zip(points, labels)]
+        store.replace_cluster_results(workload_id, assignments)
+        plot_artifact = None
+        plot_error = None
+        if should_plot:
+            try:
+                plot_bytes, plot_metadata = _build_cluster_plot_png(
+                    workload_id=workload_id,
+                    vectors=vectors,
+                    labels=[int(label) for label in labels],
+                )
+                store.upsert_workload_artifact(
+                    workload_id=workload_id,
+                    artifact_type="cluster_plot",
+                    mime_type="image/png",
+                    artifact_blob=plot_bytes,
+                    metadata=plot_metadata,
+                )
+                plot_artifact = {
+                    "artifact_type": "cluster_plot",
+                    "mime_type": "image/png",
+                    "metadata": plot_metadata,
+                }
+            except Exception as exc:
+                plot_error = str(exc)
+
+        cluster_sizes = {
+            str(cluster_id): count
+            for cluster_id, count in sorted(Counter(int(label) for label in labels).items())
+        }
+        result_payload = {
+            "workload_id": workload_id,
+            "algorithm": workload["algorithm"],
+            "submission_platform": workload.get("submission_platform"),
+            "runtime_platform": runtime_platform,
+            "cluster_sizes": cluster_sizes,
+            "n_clusters": n_clusters,
+            "plot_artifact": plot_artifact,
+            "plot_error": plot_error,
+        }
+    except Exception as exc:
+        store.complete_workload(
+            workload_id,
+            status="failed",
+            completed_at=_utcnow(),
+            metrics=_capture_execution_metrics(
+                wall_started_at=wall_started_at,
+                cpu_started_at=cpu_started_at,
+                rss_before_bytes=rss_before_bytes,
+            ),
+            error_message=str(exc),
+            runtime_platform=runtime_platform,
+        )
+        raise
+
+    store.complete_workload(
+        workload_id,
+        status="completed",
+        completed_at=_utcnow(),
+        metrics=_capture_execution_metrics(
+            wall_started_at=wall_started_at,
+            cpu_started_at=cpu_started_at,
+            rss_before_bytes=rss_before_bytes,
+        ),
+        result=result_payload,
+        runtime_platform=runtime_platform,
+    )
+    return result_payload
