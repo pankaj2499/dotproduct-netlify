@@ -151,10 +151,10 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <span className="sidebar-mark">DP</span>
+          <span className="sidebar-mark">EL</span>
           <div>
-            <strong>Dotproduct</strong>
-            <span>AI Console</span>
+            <strong>Eigenlake</strong>
+            <span>Platform Console</span>
           </div>
         </div>
 
@@ -191,7 +191,7 @@ function App() {
       <div className="workspace">
         <header className="topbar">
           <div>
-            <div className="breadcrumbs">app / Dotproduct / main</div>
+            <div className="breadcrumbs">app / Eigenlake / main</div>
             <h1>{activeLabel}</h1>
           </div>
           <div className="topbar-actions">
@@ -229,12 +229,11 @@ function ProjectOverview() {
   return (
     <div className="page-grid">
       <section className="hero-card span-2">
-        <div className="section-label">Dashboard</div>
-        <h2>Open at `http://localhost:8502` in the runtime stack.</h2>
+        <div className="section-label">Overview</div>
+        <h2>Embedding intelligence for retrieval, classification, clustering, and anomaly review.</h2>
         <p>
-          This frontend now mirrors the structure of the existing dashboard with a more professional
-          control-plane layout: project overview, workflow pages, worker load, pricing, and
-          deployment context.
+          A structured product console with operational visibility, workflow surfaces, pricing, and
+          deployment context in one place.
         </p>
       </section>
 
@@ -275,7 +274,7 @@ function ProjectOverview() {
             <strong>worker local[*] mode</strong>
           </div>
           <div className="mini-card">
-            <span>Dashboard visibility</span>
+            <span>Runtime visibility</span>
             <strong>actual runtime platform shown</strong>
           </div>
         </div>
@@ -284,7 +283,7 @@ function ProjectOverview() {
       <article className="panel span-2">
         <div className="panel-head">
           <div className="section-label">Frontend Pages</div>
-          <h3>Current Python sources mapped into the frontend shell</h3>
+          <h3>Core product sources mapped into the frontend shell</h3>
         </div>
         <div className="code-table">
           {frontendPages.map((item) => (
@@ -555,12 +554,12 @@ function DeploymentView() {
     <div className="page-grid">
       <article className="panel span-2">
         <div className="section-label">Production Deployment</div>
-        <h3>Single-VM runtime, not a frontend-only host</h3>
+        <h3>Single-VM runtime for the full application stack</h3>
         <p className="panel-copy">
-          The deployed dashboard depends on long-running services plus a shared SQLite metadata file:
-          Streamlit, worker, Redis, Weaviate, and `/workspace/.data/dotproduct.sqlite3`. Because the
-          dashboard and worker share the same SQLite state, the correct deployment target is a single
-          VM running Docker Compose.
+          The deployed application depends on long-running services plus a shared SQLite metadata
+          file: Streamlit, worker, Redis, Weaviate, and `/workspace/.data/dotproduct.sqlite3`.
+          Because the application and worker share the same SQLite state, the correct deployment
+          target is a single VM running Docker Compose.
         </p>
       </article>
 
