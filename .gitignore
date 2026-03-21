@@ -1,0 +1,5 @@
+.data/
+.git-backups/
+.ipynb_checkpoints/
+__pycache__/
+*.pyc

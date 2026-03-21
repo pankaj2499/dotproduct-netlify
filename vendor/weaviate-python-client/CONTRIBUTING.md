@@ -1,0 +1,91 @@
+### Setup
+
+The development requirements are listed in the `requirements-devel.txt` file. Install them to your virtual environment with:
+
+```shell
+pip install -r requirements-devel.txt
+```
+
+The newest client versions sometimes require upcoming Weaviate core features. We recommend using Docker (see https://docs.weaviate.io/deploy/installation-guides/docker-installation) to run a local instance of the `latest Weaviate core <https://hub.docker.com/r/semitechnologies/weaviate/tags>`_ for client development.
+
+#### Installation
+
+To install a development version of the Python client library in your virtual environment, use “edit mode”:
+
+```shell
+pip install -e /PATH/TO/WEAVIATE-PYTHON-CLIENT
+```
+
+If you do so from the root of the repository, you can use the following command:
+
+```shell
+pip install -e .
+```
+
+You can install a particular branch directly from GitHub with:
+
+```shell
+pip install git+https://github.com/weaviate/weaviate-python-client.git@BRANCH_NAME
+```
+
+If any static analysis tools such as Pylance fail, try installing the package with:
+`--config-settings editable_mode=compat` suffix. (e.g. `pip install -e . --config-settings editable_mode=compat`)
+
+### Testing
+
+To set up the testing environment, install the test requirements with:
+
+```shell
+pip install -r requirements-test.txt
+```
+
+There are three kinds of tests:
+- Unit tests test individual client components.
+- Integration tests use a running weaviate instance to test the client.
+- Mock tests simulate a weaviate instance to return specific values.
+
+To run the integration tests,
+
+1. Ensure that you have Docker installed.
+2. Start the weaviate instances, changing `WEAVIATE_VERSION` to your weaviate docker image target
+
+```shell
+./ci/start_weaviate.sh WEAVIATE_VERSION
+```
+
+3. Run the tests.
+
+```
+pytest integration
+pytest mock_tests
+pytest test
+```
+
+### Linting
+
+> **Note**
+> We strongly recommend using [pre-commit](https://pre-commit.com/) to automatically run all linters locally on each commit. Install `pre-commit` on your system, and then enable it with `pre-commit install`.
+
+We use the following tools to ensure a high code quality:
+- ruff (formatter), run with `ruff format $FOLDER_WITH_CHANGES`
+- flake8 with plugins. Run with `flake8 $FOLDER_WITH_CHANGES`.
+
+Note that all plugins are listed in the `requirements-devel.txt` file and are installed in the first step.
+
+### Creating a Pull Request
+
+- The main branch is what is released and developed currently.
+- You can create a feature-branch that is named: feature/YOUR-FEATURE-NAME.
+- Your feature branch always has the main branch as a starting point.
+- When you are done with your feature you should create a pull request into the main branch.
+- The main branch is protected.
+
+### Contributor License Agreement
+
+Contributions to Weaviate python client must be accompanied by a Contributor License Agreement. You (or your employer) retain the copyright to your contribution; this simply gives us permission to use and redistribute your contributions as part of Weaviate Python client. Go to [this page](https://www.semi.technology/playbooks/misc/contributor-license-agreement.html) to read the current agreement.
+
+The process works as follows:
+
+- You contribute by opening a [pull request](#pull-request).
+- If your account has no CLA, a DocuSign link will be added as a comment to the pull request.
+

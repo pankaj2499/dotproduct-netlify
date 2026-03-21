@@ -1,0 +1,75 @@
+name: dotproduct
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.35.2
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      CLUSTER_HOSTNAME: node1
+      DEFAULT_VECTORIZER_MODULE: none
+      ENABLE_API_BASED_MODULES: "false"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      QUERY_DEFAULTS_LIMIT: 25
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+
+  worker:
+    build:
+      context: .
+    command: celery -A app.celery_app worker --loglevel=info
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DOTPRODUCT_CLUSTER_TASK_NAME: app.tasks.run_weaviate_cluster_workload
+      DOTPRODUCT_METADATA_DB: /workspace/.data/dotproduct.sqlite3
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PYTHONPATH: /workspace
+      WEAVIATE_GRPC_PORT: 50051
+      WEAVIATE_HOST: weaviate
+      WEAVIATE_PORT: 8080
+    depends_on:
+      - redis
+      - weaviate
+    volumes:
+      - .:/workspace
+
+  notebook:
+    build:
+      context: .
+    command: >
+      jupyter lab
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --allow-root
+      --ServerApp.token=devtoken
+      --ServerApp.password=
+      --ServerApp.allow_origin=*
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DOTPRODUCT_CLUSTER_TASK_NAME: app.tasks.run_weaviate_cluster_workload
+      DOTPRODUCT_METADATA_DB: /workspace/.data/dotproduct.sqlite3
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PYTHONPATH: /workspace
+      WEAVIATE_GRPC_PORT: 50051
+      WEAVIATE_HOST: weaviate
+      WEAVIATE_PORT: 8080
+    depends_on:
+      - redis
+      - weaviate
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/workspace
+
+volumes:
+  weaviate_data:

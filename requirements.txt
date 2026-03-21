@@ -1,0 +1,9 @@
+-e ./vendor/weaviate-python-client
+celery[redis]==5.4.0
+jupyterlab==4.2.5
+httpx<0.28
+matplotlib==3.9.2
+openai>=1.0,<2
+pandas==2.2.3
+scikit-learn==1.5.2
+pyspark==3.5.3

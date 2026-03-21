@@ -1,0 +1,909 @@
+import os
+from typing import List, Union
+
+import pytest
+from _pytest.fixtures import SubRequest
+
+import weaviate
+from integration.conftest import CollectionFactory, OpenAICollection
+from weaviate.collections.classes.config import (
+    Configure,
+    DataType,
+    Property,
+)
+from weaviate.collections.classes.data import DataObject
+from weaviate.collections.classes.generative import (
+    GenerativeConfig,
+    GenerativeParameters,
+    _GroupedTask,
+    _SinglePrompt,
+)
+from weaviate.collections.classes.grpc import GroupBy, Rerank
+from weaviate.exceptions import WeaviateQueryError, WeaviateUnsupportedFeatureError
+from weaviate.proto.v1 import generative_pb2
+from weaviate.util import _ServerVersion
+
+
+@pytest.mark.parametrize("parameter,answer", [("text", "yes"), ("content", "no")])
+def test_generative_search_single(
+    openai_collection: OpenAICollection, parameter: str, answer: str
+) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(properties={"text": "bananas are great", "content": "bananas are bad"}),
+            DataObject(properties={"text": "apples are great", "content": "apples are bad"}),
+        ]
+    )
+
+    res = collection.generate.fetch_objects(
+        single_prompt=f"is it good or bad based on {{{parameter}}}? Just answer with yes or no without punctuation",
+    )
+    for obj in res.objects:
+        assert obj.generated is not None
+        assert obj.generated.lower() == answer
+    assert res.generated is None
+
+
+@pytest.mark.parametrize(
+    "prop,answer", [(["text"], "apples bananas"), (["content"], "bananas apples")]
+)
+def test_fetch_objects_generate_search_grouped(
+    openai_collection: OpenAICollection, prop: List[str], answer: str
+) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(properties={"text": "apples are big", "content": "apples are small"}),
+            DataObject(properties={"text": "bananas are small", "content": "bananas are big"}),
+        ]
+    )
+
+    res = collection.generate.fetch_objects(
+        grouped_task="What is big and what is small? write the name of the big thing first and then the name of the small thing after a space. Dont write anything else",
+        grouped_properties=prop,
+    )
+    assert res.generated == answer
+
+
+def test_fetch_objects_generate_search_grouped_all_props(
+    openai_collection: OpenAICollection, request: SubRequest
+) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big. Apples are smaller than Teddy and bigger than bananas",
+                    "content": "Teddy is the biggest and bigger than everything else. Teddy is bigger than apples.",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "bananas are small. Bananas are smaller than apples and bigger than cats",
+                    "content": "cats are the smallest and smaller than everything else. Cats are smaller than bananas",
+                }
+            ),
+        ]
+    )
+
+    res = collection.generate.fetch_objects(
+        grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space. Dont write anything else"
+    )
+    assert res.generated == "Teddy cats"
+
+
+def test_fetch_objects_generate_search_grouped_specified_prop(
+    openai_collection: OpenAICollection,
+) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big",
+                    "content": "Teddy is the biggest and bigger than everything else",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "bananas are small",
+                    "content": "cats are the smallest and smaller than everything else",
+                }
+            ),
+        ]
+    )
+
+    res = collection.generate.fetch_objects(
+        grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space",
+        grouped_properties=["text"],
+    )
+    assert res.generated == "apples bananas"
+
+
+def test_fetch_objects_generate_with_everything(openai_collection: OpenAICollection) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big. Apples are smaller than Teddy and bigger than bananas",
+                    "content": "Teddy is the biggest and bigger than everything else",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "bananas are small. Bananas are smaller than apples and bigger than cats.",
+                    "content": "cats are the smallest and smaller than everything else",
+                }
+            ),
+        ]
+    )
+
+    res = collection.generate.fetch_objects(
+        single_prompt="Is there something to eat in {text}? Only answer yes if there is something to eat or no if not without punctuation",
+        grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space",
+    )
+    assert res.generated == "Teddy cats"
+    for obj in res.objects:
+        assert obj.generated == "Yes"
+
+
+def test_bm25_generate_with_everything(
+    openai_collection: OpenAICollection, request: SubRequest
+) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big",
+                    "content": "Teddy is the biggest and bigger than everything else",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "bananas are small",
+                    "content": "cats are the smallest and smaller than everything else",
+                }
+            ),
+        ]
+    )
+
+    res = collection.generate.bm25(
+        query="Teddy",
+        query_properties=["content"],
+        single_prompt="Is there something to eat in {text}? Only answer yes if there is something to eat or no if not without punctuation",
+        grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space",
+    )
+    assert res.generated == "Teddy apples"
+    for obj in res.objects:
+        assert obj.generated == "Yes"
+
+
+def test_bm25_generate_and_group_by_with_everything(
+    openai_collection: OpenAICollection, request: SubRequest
+) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big",
+                    "content": "Teddy is the biggest and bigger than everything else",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "bananas are small",
+                    "content": "cats are the smallest and smaller than everything else",
+                }
+            ),
+        ]
+    )
+
+    if collection._connection.supports_groupby_in_bm25_and_hybrid():
+        res = collection.generate.bm25(
+            query="Teddy",
+            query_properties=["content"],
+            single_prompt="Is there something to eat in {text}? Only answer yes if there is something to eat or no if not without punctuation",
+            grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space",
+            group_by=GroupBy(prop="text", number_of_groups=2, objects_per_group=1),
+        )
+        assert res.generated == "Teddy apples"
+        assert len(res.groups) == 1
+        groups = list(res.groups.values())
+        assert groups[0].generated == "Yes"
+        assert res.objects[0].belongs_to_group == "apples are big"
+    else:
+        with pytest.raises(WeaviateUnsupportedFeatureError):
+            collection.generate.bm25(
+                query="Teddy",
+                query_properties=["content"],
+                single_prompt="Is there something to eat in {text}? Only answer yes if there is something to eat or no if not without punctuation",
+                grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space",
+                group_by=GroupBy(prop="text", number_of_groups=2, objects_per_group=1),
+            )
+
+
+def test_hybrid_generate_with_everything(
+    openai_collection: OpenAICollection, request: SubRequest
+) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big. You can eat apples",
+                    "content": "Teddy is the biggest and bigger than everything else",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "cats are small. You cannot eat cats",
+                    "content": "bananas are the smallest and smaller than everything else",
+                }
+            ),
+        ]
+    )
+
+    res = collection.generate.hybrid(
+        query="cats",
+        alpha=0,
+        query_properties=["text"],
+        single_prompt="Does {text} mention cats? Only answer yes if there is the word cat or cats in the text and no if not. Dont use punctuation",
+        grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space from biggest to smallest",
+    )
+    assert res.generated == "cats bananas"
+    for obj in res.objects:
+        assert obj.generated is not None
+        assert obj.generated.lower() == "yes"
+
+
+def test_hybrid_generate_and_group_by_with_everything(
+    openai_collection: OpenAICollection, request: SubRequest
+) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big",
+                    "content": "Teddy is the biggest and bigger than everything else",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "bananas are small",
+                    "content": "cats are the smallest and smaller than everything else",
+                }
+            ),
+        ]
+    )
+
+    if collection._connection.supports_groupby_in_bm25_and_hybrid():
+        res = collection.generate.hybrid(
+            query="Teddy",
+            alpha=0,
+            query_properties=["content"],
+            single_prompt="Is there something to eat in {text}? Only answer yes if there is something to eat or no if not without punctuation",
+            grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space",
+            group_by=GroupBy(prop="text", number_of_groups=2, objects_per_group=1),
+        )
+        assert res.generated == "Teddy apples"
+        assert len(res.groups) == 1
+        groups = list(res.groups.values())
+        assert groups[0].generated == "Yes"
+        assert res.objects[0].belongs_to_group == "apples are big"
+    else:
+        with pytest.raises(WeaviateUnsupportedFeatureError):
+            collection.generate.hybrid(
+                query="Teddy",
+                alpha=0,
+                query_properties=["content"],
+                single_prompt="Is there something to eat in {text}? Only answer yes if there is something to eat or no if not without punctuation",
+                grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space",
+                group_by=GroupBy(prop="text", number_of_groups=2, objects_per_group=1),
+            )
+
+
+def test_near_object_generate_with_everything(openai_collection: OpenAICollection) -> None:
+    collection = openai_collection(
+        vectorizer_config=Configure.Vectorizer.text2vec_openai(vectorize_collection_name=False),
+    )
+
+    ret = collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big",
+                    "content": "Teddy is the biggest and bigger than everything else",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "cats are small. you cannot eat cats.",
+                    "content": "bananas are the smallest and smaller than everything else",
+                }
+            ),
+        ]
+    )
+
+    res = collection.generate.near_object(
+        ret.uuids[1],
+        single_prompt="Are cats mentioned in {text} of the given object? Only answer yes if there is the word cat or cats and no if not. Dont use punctuation",
+        grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space from biggest to smallest",
+        grouped_properties=["text"],
+    )
+    assert res.generated == "apples cats"
+    assert res.objects[0].generated is not None
+    assert res.objects[1].generated is not None
+
+
+def test_near_object_generate_and_group_by_with_everything(
+    openai_collection: OpenAICollection,
+) -> None:
+    collection = openai_collection(
+        vectorizer_config=Configure.Vectorizer.text2vec_openai(vectorize_collection_name=False),
+    )
+
+    ret = collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big. you can eat apples",
+                    "content": "Teddy is the biggest and bigger than everything else",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "cats are small. you cannot eat cats",
+                    "content": "bananas are the smallest and smaller than everything else",
+                }
+            ),
+        ]
+    )
+
+    res = collection.generate.near_object(
+        ret.uuids[1],
+        single_prompt="Is there something to eat in {text} in the given object? Only answer yes if there is something to eat or no if not without punctuation",
+        grouped_task="What is the biggest and what is the smallest? Only write the names separated by a space from biggest to smallest",
+        grouped_properties=["text"],
+        group_by=GroupBy(prop="text", number_of_groups=2, objects_per_group=1),
+    )
+    assert res.generated == "apples cats"
+    assert len(res.groups) == 2
+    groups = list(res.groups.values())
+    assert groups[0].generated is not None
+    assert groups[1].generated is not None
+
+
+def test_near_text_generate_with_everything(openai_collection: OpenAICollection) -> None:
+    collection = openai_collection(
+        vectorizer_config=Configure.Vectorizer.text2vec_openai(vectorize_collection_name=False),
+    )
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "melons are big",
+                    "content": "Teddy is the biggest and bigger than everything else. Teddy is not a fruit",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "cats are small. You cannot eat cats. Cats are not fruit",
+                    "content": "bananas are the smallest and smaller than everything else",
+                }
+            ),
+        ]
+    )
+
+    res = collection.generate.near_text(
+        query="small fruit",
+        single_prompt="Is there something to eat in {text} of the given object? Only answer yes if there is something to eat and no if not. Dont use punctuation",
+        grouped_task="Write out the fruit in alphabetical order. Only write the names separated by a space",
+    )
+    assert res.generated == "bananas melons"
+    assert res.objects[0].generated is not None
+    assert res.objects[1].generated is not None
+    assert res.objects[0].generated.lower() == "no"
+    assert res.objects[1].generated.lower() == "yes"
+
+
+def test_near_text_generate_and_group_by_with_everything(
+    openai_collection: OpenAICollection,
+) -> None:
+    collection = openai_collection(
+        vectorizer_config=Configure.Vectorizer.text2vec_openai(vectorize_collection_name=False),
+    )
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big",
+                    "content": "Teddy is the biggest and bigger than everything else. Teddy is not a fruit",
+                },
+            ),
+            DataObject(
+                properties={
+                    "text": "cats are small. you cannot eat cats. Cats are not fruit",
+                    "content": "bananas are the smallest and smaller than everything else",
+                },
+            ),
+        ]
+    )
+
+    res = collection.generate.near_text(
+        query="small fruit",
+        single_prompt="Is there something to eat in {text} of the given object? Only answer yes if there is something to eat and no if not. Dont use punctuation",
+        grouped_task="Write out the fruit in alphabetical order. Only write the names separated by a space",
+        group_by=GroupBy(prop="text", number_of_groups=2, objects_per_group=1),
+    )
+    assert res.generated == "apples bananas"
+    assert len(res.groups) == 2
+    groups = list(res.groups.values())
+    assert groups[0].generated is not None
+    assert groups[1].generated is not None
+    assert groups[0].generated.lower() == "no"
+    assert groups[1].generated.lower() == "yes"
+
+
+def test_near_vector_generate_with_everything(openai_collection: OpenAICollection) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big",
+                    "content": "Teddy is the biggest and bigger than everything else",
+                },
+                vector=[0.1, 0.2, 0.3, 0.4, 0.5],
+            ),
+            DataObject(
+                properties={
+                    "text": "cats are small. Cats are not fruit. You cannot eat cats",
+                    "content": "bananas are the smallest and smaller than everything else",
+                },
+                vector=[0.6, 0.7, 0.8, 0.9, 0.99],
+            ),
+        ]
+    )
+
+    res = collection.generate.near_vector(
+        near_vector=[0.1, 0.2, 0.3, 0.4, 0.6],
+        single_prompt="Is there something to eat in {text}? Only answer yes if there is something to eat or no if not without punctuation",
+        grouped_task="Write out the fruit in the order in which they appear in the provided list. Only write the names separated by a space",
+    )
+    assert res.generated == "apples bananas"
+    assert res.objects[0].generated == "Yes"
+    assert res.objects[1].generated == "No"
+
+
+def test_near_vector_generate_and_group_by_with_everything(
+    openai_collection: OpenAICollection, request: SubRequest
+) -> None:
+    collection = openai_collection()
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "apples are big",
+                    "content": "Teddy is the biggest and bigger than everything else",
+                },
+                vector=[0.1, 0.2, 0.3, 0.4, 0.5],
+            ),
+            DataObject(
+                properties={
+                    "text": "cats are small. Cats are not a fruit, you cannot eat cats.",
+                    "content": "bananas are the smallest and smaller than everything else",
+                },
+                vector=[0.6, 0.7, 0.8, 0.9, 0.99],
+            ),
+        ]
+    )
+
+    res = collection.generate.near_vector(
+        near_vector=[0.1, 0.2, 0.3, 0.4, 0.6],
+        single_prompt="Is there something to eat in {text}? Only answer yes if there is something to eat or no if not without punctuation",
+        grouped_task="Write out the fruit in the order in which they appear in the provided list. Only write the names separated by a space",
+        group_by=GroupBy(prop="text", number_of_groups=2, objects_per_group=1),
+    )
+    assert res.generated == "apples bananas"
+    assert len(res.groups) == 2
+    assert list(res.groups.values())[0].generated == "Yes"
+    assert list(res.groups.values())[1].generated == "No"
+
+
+def test_openai_invalid_key(request: SubRequest) -> None:
+    with weaviate.connect_to_local(
+        port=8086, grpc_port=50057, headers={"X-OpenAI-Api-Key": "IamNotValid"}
+    ) as client:
+        client.collections.delete(request.node.name)
+        collection = client.collections.create(
+            name=request.node.name,
+            properties=[Property(name="text", data_type=DataType.TEXT)],
+            generative_config=Configure.Generative.openai(),
+            vectorizer_config=Configure.Vectorizer.none(),
+        )
+        collection.data.insert(properties={"text": "test"})
+        with pytest.raises(WeaviateQueryError):
+            collection.generate.fetch_objects(single_prompt="tell a joke based on {text}")
+
+
+def test_openai_no_module(request: SubRequest) -> None:
+    with weaviate.connect_to_local(
+        port=8080, grpc_port=50051, headers={"X-OpenAI-Api-Key": "doesnt matter"}
+    ) as client:
+        collection = client.collections.create(
+            name=request.node.name,
+            properties=[Property(name="text", data_type=DataType.TEXT)],
+            generative_config=Configure.Generative.openai(),
+            vectorizer_config=Configure.Vectorizer.none(),
+        )
+        try:
+            collection.data.insert(properties={"text": "test"})
+            with pytest.raises(WeaviateQueryError):
+                collection.generate.fetch_objects(single_prompt="tell a joke based on {text}")
+        finally:
+            client.collections.delete(request.node.name)
+
+
+def test_openai_batch_upload(openai_collection: OpenAICollection, request: SubRequest) -> None:
+    collection = openai_collection(vectorizer_config=Configure.Vectorizer.text2vec_openai())
+
+    ret = collection.data.insert_many(
+        [
+            DataObject(properties={"text": "apples are big"}),
+            DataObject(properties={"text": "bananas are small"}),
+        ]
+    )
+    if ret.has_errors:
+        print(ret.errors)
+    assert not ret.has_errors
+
+    objects = collection.query.fetch_objects(include_vector=True).objects
+    assert "default" in objects[0].vector
+    assert len(objects[0].vector["default"]) > 0
+
+
+def test_queries_with_rerank_and_generative(collection_factory: CollectionFactory) -> None:
+    api_key = os.environ.get("COHERE_APIKEY")
+    if api_key is None:
+        pytest.skip("No Cohere API key found.")
+
+    collection = collection_factory(
+        name="Test_test_queries_with_rerank_and_generative",
+        generative_config=Configure.Generative.cohere(),
+        reranker_config=Configure.Reranker.cohere(),
+        vectorizer_config=Configure.Vectorizer.text2vec_cohere(),
+        properties=[Property(name="text", data_type=DataType.TEXT)],
+        ports=(8086, 50057),
+        headers={"X-Cohere-Api-Key": api_key},
+    )
+    if collection._connection._weaviate_version < _ServerVersion(1, 23, 1):
+        pytest.skip("Generative reranking requires Weaviate 1.23.1 or higher")
+
+    insert = collection.data.insert_many(
+        [{"text": "This is a test"}, {"text": "This is another test"}]
+    )
+    uuid1 = insert.uuids[0]
+    vector1 = collection.query.fetch_object_by_id(uuid1, include_vector=True).vector
+    assert vector1 is not None
+
+    for _idx, query in enumerate(
+        [
+            lambda: collection.generate.bm25(
+                "test",
+                rerank=Rerank(prop="text", query="another"),
+                single_prompt="What is it? {text}",
+            ),
+            lambda: collection.generate.hybrid(
+                "test",
+                rerank=Rerank(prop="text", query="another"),
+                single_prompt="What is it? {text}",
+            ),
+            lambda: collection.generate.near_object(
+                uuid1,
+                rerank=Rerank(prop="text", query="another"),
+                single_prompt="What is it? {text}",
+            ),
+            lambda: collection.generate.near_vector(
+                vector1["default"],
+                rerank=Rerank(prop="text", query="another"),
+                single_prompt="What is it? {text}",
+            ),
+            lambda: collection.generate.near_text(
+                "test",
+                rerank=Rerank(prop="text", query="another"),
+                single_prompt="What is it? {text}",
+            ),
+        ]
+    ):
+        objects = query().objects
+        assert len(objects) == 2
+        assert objects[0].metadata.rerank_score is not None
+        assert objects[0].generated is not None
+        assert objects[1].metadata.rerank_score is not None
+        assert objects[1].generated is not None
+
+        assert [obj for obj in objects if "another" in obj.properties["text"]][  # type: ignore
+            0
+        ].metadata.rerank_score > [
+            obj for obj in objects if "another" not in obj.properties["text"]
+        ][0].metadata.rerank_score
+
+
+@pytest.mark.parametrize(
+    "grouped",
+    [
+        "Write out the fruit in alphabetical order. Only write the names separated by a space",
+        GenerativeParameters.grouped_task(
+            prompt="Write out the fruit in alphabetical order. Only write the names separated by a space",
+            metadata=True,
+        ),
+    ],
+    ids=["string", "object"],
+)
+@pytest.mark.parametrize(
+    "single",
+    [
+        "Is there something to eat in {text} of the given object? Only answer yes if there is something to eat and no if not. Dont use punctuation",
+        GenerativeParameters.single_prompt(
+            prompt="Is there something to eat in {text} of the given object? Only answer yes if there is something to eat and no if not. Dont use punctuation",
+            metadata=True,
+            debug=True,
+        ),
+    ],
+    ids=["string", "object"],
+)
+def test_near_text_generate_with_dynamic_rag(
+    openai_collection: OpenAICollection,
+    grouped: Union[str, _GroupedTask],
+    single: Union[str, _SinglePrompt],
+) -> None:
+    collection = openai_collection(
+        vectorizer_config=Configure.Vectorizer.text2vec_openai(vectorize_collection_name=False),
+    )
+
+    collection.data.insert_many(
+        [
+            DataObject(
+                properties={
+                    "text": "melons are big",
+                    "content": "Teddy is the biggest and bigger than everything else. Teddy is not a fruit",
+                }
+            ),
+            DataObject(
+                properties={
+                    "text": "cats are small. You cannot eat cats. Cats are not fruit",
+                    "content": "bananas are the smallest and smaller than everything else",
+                }
+            ),
+        ]
+    )
+
+    query = lambda: collection.generate.near_text(  # noqa: E731
+        query="small fruit",
+        single_prompt=single,
+        grouped_task=grouped,
+        generative_provider=GenerativeConfig.openai(
+            temperature=0.1,
+        ),
+    )
+
+    if collection._connection._weaviate_version.is_lower_than(1, 30, 0):
+        with pytest.raises(WeaviateUnsupportedFeatureError):
+            res = query()
+    else:
+        res = query()
+        # deprecated usage
+        assert res.generated == "bananas melons"
+        assert res.objects[0].generated is not None
+        assert res.objects[1].generated is not None
+
+        assert res.generative is not None
+        assert res.generative.text == "bananas melons"
+
+        if isinstance(grouped, _GroupedTask):
+            assert isinstance(res.generative.metadata, generative_pb2.GenerativeOpenAIMetadata)
+        else:
+            assert res.generative.metadata is None
+
+        g0 = res.objects[0].generative
+        g1 = res.objects[1].generative
+
+        assert g0 is not None
+        assert g0.text is not None
+        assert g1 is not None
+        assert g1.text is not None
+
+        if isinstance(single, _SinglePrompt):
+            assert g0.debug is not None
+            assert isinstance(g0.metadata, generative_pb2.GenerativeOpenAIMetadata)
+            assert g1.debug is not None
+            assert isinstance(g1.metadata, generative_pb2.GenerativeOpenAIMetadata)
+        else:
+            assert g0.debug is None
+            assert g0.metadata is None
+            assert g1.metadata is None
+
+
+@pytest.mark.parametrize("parameter,answer", [("text", "yes"), ("content", "no")])
+def test_contextualai_generative_search_single(
+    collection_factory: CollectionFactory, parameter: str, answer: str
+) -> None:
+    """Test Contextual AI generative search with single prompt."""
+    api_key = os.environ.get("CONTEXTUAL_API_KEY")
+    if api_key is None:
+        pytest.skip("No Contextual AI API key found.")
+
+    collection = collection_factory(
+        name="TestContextualAIGenerativeSingle",
+        generative_config=Configure.Generative.contextualai(
+            model="v2",
+            max_new_tokens=100,
+            temperature=0.1,
+            system_prompt="You are a helpful assistant that provides accurate and informative responses based on the given context. Answer with yes or no only.",
+            avoid_commentary=False,
+        ),
+        vectorizer_config=Configure.Vectorizer.none(),
+        properties=[
+            Property(name="text", data_type=DataType.TEXT),
+            Property(name="content", data_type=DataType.TEXT),
+        ],
+        headers={"X-Contextual-Api-Key": api_key},
+        ports=(8086, 50057),
+    )
+    if collection._connection._weaviate_version.is_lower_than(1, 23, 1):
+        pytest.skip("Generative search requires Weaviate 1.23.1 or higher")
+
+    collection.data.insert_many(
+        [
+            DataObject(properties={"text": "bananas are great", "content": "bananas are bad"}),
+            DataObject(properties={"text": "apples are great", "content": "apples are bad"}),
+        ]
+    )
+
+    res = collection.generate.fetch_objects(
+        single_prompt=f"is it good or bad based on {{{parameter}}}? Just answer with yes or no without punctuation",
+    )
+    for obj in res.objects:
+        assert obj.generated is not None
+        assert obj.generated.lower() == answer
+    assert res.generated is None
+
+
+def test_contextualai_generative_with_knowledge_parameter(
+    collection_factory: CollectionFactory,
+) -> None:
+    """Test Contextual AI generative search with knowledge parameter override."""
+    api_key = os.environ.get("CONTEXTUAL_API_KEY")
+    if api_key is None:
+        pytest.skip("No Contextual AI API key found.")
+
+    collection = collection_factory(
+        name="TestContextualAIGenerativeKnowledge",
+        generative_config=Configure.Generative.contextualai(
+            model="v2",
+            max_new_tokens=100,
+            temperature=0.1,
+            system_prompt="You are a helpful assistant.",
+            avoid_commentary=False,
+        ),
+        vectorizer_config=Configure.Vectorizer.none(),
+        properties=[
+            Property(name="text", data_type=DataType.TEXT),
+        ],
+        headers={"X-Contextual-Api-Key": api_key},
+        ports=(8086, 50057),
+    )
+    if collection._connection._weaviate_version.is_lower_than(1, 23, 1):
+        pytest.skip("Generative search requires Weaviate 1.23.1 or higher")
+
+    collection.data.insert_many(
+        [
+            DataObject(properties={"text": "base knowledge"}),
+        ]
+    )
+
+    # Test with knowledge parameter override
+    res = collection.generate.fetch_objects(
+        single_prompt="What is the custom knowledge?",
+        config=GenerativeConfig.contextualai(
+            knowledge=["Custom knowledge override", "Additional context"],
+        ),
+    )
+    for obj in res.objects:
+        assert obj.generated is not None
+        assert isinstance(obj.generated, str)
+
+
+def test_contextualai_generative_and_rerank_combined(collection_factory: CollectionFactory) -> None:
+    """Test Contextual AI generative search combined with reranking."""
+    contextual_api_key = os.environ.get("CONTEXTUAL_API_KEY")
+    if contextual_api_key is None:
+        pytest.skip("No Contextual AI API key found.")
+
+    collection = collection_factory(
+        name="TestContextualAIGenerativeAndRerank",
+        generative_config=Configure.Generative.contextualai(
+            model="v2",
+            max_new_tokens=100,
+            temperature=0.1,
+            system_prompt="You are a helpful assistant that provides accurate and informative responses based on the given context.",
+            avoid_commentary=False,
+        ),
+        reranker_config=Configure.Reranker.contextualai(
+            model="ctxl-rerank-v2-instruct-multilingual",
+            instruction="Prioritize documents that contain the query term",
+        ),
+        vectorizer_config=Configure.Vectorizer.text2vec_openai(),
+        properties=[Property(name="text", data_type=DataType.TEXT)],
+        headers={"X-Contextual-Api-Key": contextual_api_key},
+        ports=(8086, 50057),
+    )
+    if collection._connection._weaviate_version < _ServerVersion(1, 23, 1):
+        pytest.skip("Generative reranking requires Weaviate 1.23.1 or higher")
+
+    insert = collection.data.insert_many(
+        [{"text": "This is a test"}, {"text": "This is another test"}]
+    )
+    uuid1 = insert.uuids[0]
+    vector1 = collection.query.fetch_object_by_id(uuid1, include_vector=True).vector
+    assert vector1 is not None
+
+    for _idx, query in enumerate(
+        [
+            lambda: collection.generate.bm25(
+                "test",
+                rerank=Rerank(prop="text", query="another"),
+                single_prompt="What is it? {text}",
+            ),
+            lambda: collection.generate.hybrid(
+                "test",
+                rerank=Rerank(prop="text", query="another"),
+                single_prompt="What is it? {text}",
+            ),
+            lambda: collection.generate.near_object(
+                uuid1,
+                rerank=Rerank(prop="text", query="another"),
+                single_prompt="What is it? {text}",
+            ),
+            lambda: collection.generate.near_vector(
+                vector1["default"],
+                rerank=Rerank(prop="text", query="another"),
+                single_prompt="What is it? {text}",
+            ),
+            lambda: collection.generate.near_text(
+                "test",
+                rerank=Rerank(prop="text", query="another"),
+                single_prompt="What is it? {text}",
+            ),
+        ]
+    ):
+        objects = query().objects
+        assert len(objects) == 2
+        assert objects[0].metadata.rerank_score is not None
+        assert objects[0].generated is not None
+        assert objects[1].metadata.rerank_score is not None
+        assert objects[1].generated is not None
+
+        assert [obj for obj in objects if "another" in obj.properties["text"]][  # type: ignore
+            0
+        ].metadata.rerank_score > [
+            obj for obj in objects if "another" not in obj.properties["text"]
+        ][0].metadata.rerank_score
