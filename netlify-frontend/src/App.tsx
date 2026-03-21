@@ -1,4 +1,5 @@
 import { useState } from "react";
+import eigenlakeLogo from "./assets/eigenlake-logo.svg";
 
 type ViewId =
   | "overview"
@@ -151,7 +152,7 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <span className="sidebar-mark">EL</span>
+          <img className="sidebar-logo" src={eigenlakeLogo} alt="Eigenlake" />
           <div>
             <strong>Eigenlake</strong>
             <span>Platform Console</span>

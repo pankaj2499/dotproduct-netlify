@@ -77,17 +77,13 @@ code {
   border-bottom: 1px solid var(--line);
 }
 
-.sidebar-mark {
-  width: 2.6rem;
-  height: 2.6rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.sidebar-logo {
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+  flex: 0 0 auto;
   border-radius: 0.85rem;
-  background: linear-gradient(135deg, #6fc4ff, #8b95ff);
-  color: #081019;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
 }
 
 .sidebar-brand strong,
