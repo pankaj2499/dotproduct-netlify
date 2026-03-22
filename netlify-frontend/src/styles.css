@@ -70,20 +70,24 @@ code {
 }
 
 .sidebar-brand {
-  display: flex;
-  gap: 0.9rem;
-  align-items: center;
+  display: grid;
+  gap: 0.6rem;
+  align-items: start;
   padding: 0.25rem 0.4rem 1rem;
   border-bottom: 1px solid var(--line);
 }
 
 .sidebar-logo {
-  width: 3rem;
-  height: 3rem;
+  width: min(100%, 220px);
+  height: auto;
   object-fit: contain;
   flex: 0 0 auto;
-  border-radius: 0.85rem;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  border-radius: 0.7rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.sidebar-brand-copy {
+  padding-left: 0.1rem;
 }
 
 .sidebar-brand strong,

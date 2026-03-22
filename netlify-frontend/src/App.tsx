@@ -153,8 +153,7 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <img className="sidebar-logo" src={eigenlakeLogo} alt="Dot Product" />
-          <div>
-            <strong>Dot Product</strong>
+          <div className="sidebar-brand-copy">
             <span>Platform Console</span>
           </div>
         </div>
