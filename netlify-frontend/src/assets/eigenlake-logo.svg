@@ -1,84 +1,28 @@
-<svg width="720" height="240" viewBox="0 0 720 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="720" height="240" rx="28" fill="#0F1115"/>
+<svg width="420" height="120" viewBox="0 0 420 120" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="dotGradient" x1="122" y1="164" x2="300" y2="164" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#35C8F6"/>
-      <stop offset="1" stop-color="#7EE7FF"/>
+    <linearGradient id="dpBlue" x1="22" y1="28" x2="78" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7EE7FF"/>
+      <stop offset="1" stop-color="#1FA4F5"/>
     </linearGradient>
-    <linearGradient id="productGradient" x1="328" y1="164" x2="598" y2="164" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFE3A5"/>
-      <stop offset="0.58" stop-color="#FFB547"/>
-      <stop offset="1" stop-color="#FF7F11"/>
-    </linearGradient>
-    <linearGradient id="lineLeft" x1="170" y1="56" x2="303" y2="56" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#34C5F5" stop-opacity="0"/>
-      <stop offset="0.45" stop-color="#8CEBFF"/>
-      <stop offset="1" stop-color="#EAFBFF"/>
-    </linearGradient>
-    <linearGradient id="lineRight" x1="417" y1="56" x2="550" y2="56" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF3D6"/>
-      <stop offset="0.45" stop-color="#FFB547"/>
-      <stop offset="1" stop-color="#FF8A1D" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="tagLeft" x1="118" y1="191" x2="217" y2="191" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#2DC4F4" stop-opacity="0"/>
-      <stop offset="1" stop-color="#AEF0FF"/>
-    </linearGradient>
-    <linearGradient id="tagRight" x1="504" y1="191" x2="602" y2="191" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF1CB"/>
-      <stop offset="1" stop-color="#FF9F2B" stop-opacity="0"/>
+    <linearGradient id="dpOrange" x1="160" y1="58" x2="355" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE2A6"/>
+      <stop offset="0.55" stop-color="#FFBA4B"/>
+      <stop offset="1" stop-color="#FF851A"/>
     </linearGradient>
   </defs>
 
-  <g opacity="0.96">
-    <path d="M170 56H228" stroke="url(#lineLeft)" stroke-width="3.5" stroke-linecap="round"/>
-    <path d="M492 56H550" stroke="url(#lineRight)" stroke-width="3.5" stroke-linecap="round"/>
-    <circle cx="268" cy="56" r="14" fill="#F8FBFF"/>
-    <circle cx="360" cy="56" r="12" stroke="#FFBF57" stroke-width="3"/>
-    <circle cx="452" cy="56" r="14" fill="#FFE4A6"/>
-    <circle cx="317" cy="28" r="14" fill="#FFFDF8"/>
-    <circle cx="317" cy="84" r="14" fill="#FFFDF8"/>
-    <path d="M317 42V70" stroke="#FFFDF8" stroke-width="5" stroke-linecap="round"/>
-    <path d="M282 56H346" stroke="#9DEBFF" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 14"/>
-    <path d="M374 56H438" stroke="#FFBE56" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 14"/>
-    <path d="M247 56L225 56" stroke="#EAFBFF" stroke-width="4" stroke-linecap="round"/>
-    <path d="M225 56L235 45" stroke="#EAFBFF" stroke-width="4" stroke-linecap="round"/>
-    <path d="M225 56L235 67" stroke="#EAFBFF" stroke-width="4" stroke-linecap="round"/>
-    <path d="M473 56H495" stroke="#FFEEC1" stroke-width="4" stroke-linecap="round"/>
-    <path d="M495 56L485 45" stroke="#FFEEC1" stroke-width="4" stroke-linecap="round"/>
-    <path d="M495 56L485 67" stroke="#FFEEC1" stroke-width="4" stroke-linecap="round"/>
+  <rect width="420" height="120" rx="20" fill="#101319"/>
+
+  <g transform="translate(18 20)">
+    <circle cx="42" cy="20" r="10" fill="#F5F7FB"/>
+    <circle cx="20" cy="42" r="10" fill="url(#dpBlue)"/>
+    <circle cx="64" cy="42" r="10" fill="url(#dpBlue)"/>
+    <circle cx="42" cy="64" r="10" fill="#F5F7FB"/>
+    <path d="M20 42L42 20L64 42L42 64L20 42Z" stroke="#21B8F7" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M42 20V64" stroke="#F5F7FB" stroke-width="4" stroke-linecap="round"/>
+    <path d="M20 42H64" stroke="#21B8F7" stroke-width="4" stroke-linecap="round"/>
   </g>
 
-  <g opacity="0.86">
-    <path d="M247 87H473" stroke="#243B52" stroke-width="2"/>
-    <path d="M276 87L290 123" stroke="#2A7BA9" stroke-width="2"/>
-    <path d="M444 87L430 123" stroke="#CE8B34" stroke-width="2"/>
-    <path d="M290 123H430" stroke="#2F303B" stroke-width="2"/>
-    <path d="M304 96H416" stroke="#2C3443" stroke-width="1.8"/>
-    <path d="M300 104H420" stroke="#2C3443" stroke-width="1.8"/>
-    <path d="M296 112H424" stroke="#2C3443" stroke-width="1.8"/>
-    <path d="M292 120H428" stroke="#2C3443" stroke-width="1.8"/>
-  </g>
-
-  <g opacity="0.8" stroke-width="2" stroke-linecap="round">
-    <path d="M123 109H252" stroke="#2CC3F3"/>
-    <path d="M130 127H247" stroke="#2CC3F3"/>
-    <path d="M138 145H242" stroke="#2CC3F3"/>
-    <path d="M146 163H238" stroke="#2CC3F3"/>
-    <path d="M468 109H597" stroke="#FFAA3B"/>
-    <path d="M473 127H591" stroke="#FFAA3B"/>
-    <path d="M478 145H586" stroke="#FFAA3B"/>
-    <path d="M483 163H581" stroke="#FFAA3B"/>
-  </g>
-
-  <path d="M120 176H602" stroke="#303745" stroke-width="2"/>
-  <path d="M126 178H594" stroke="#78DFFF" stroke-opacity="0.22" stroke-width="2"/>
-
-  <g>
-    <text x="118" y="208" fill="url(#dotGradient)" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800" letter-spacing="1.5">DOT</text>
-    <text x="323" y="208" fill="url(#productGradient)" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800" letter-spacing="1.2">PRODUCT</text>
-    <path d="M118 191H217" stroke="url(#tagLeft)" stroke-width="3" stroke-linecap="round"/>
-    <path d="M504 191H602" stroke="url(#tagRight)" stroke-width="3" stroke-linecap="round"/>
-    <text x="238" y="199" fill="#E6E9F0" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="500" letter-spacing="4.2">ML OS LAYER • VECTOR DATA</text>
-  </g>
+  <text x="106" y="72" fill="url(#dpBlue)" font-family="Arial, Helvetica, sans-serif" font-size="40" font-weight="800" letter-spacing="1.5">DOT</text>
+  <text x="194" y="72" fill="url(#dpOrange)" font-family="Arial, Helvetica, sans-serif" font-size="40" font-weight="800" letter-spacing="1.2">PRODUCT</text>
 </svg>
