@@ -152,9 +152,9 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <img className="sidebar-logo" src={eigenlakeLogo} alt="Eigenlake" />
+          <img className="sidebar-logo" src={eigenlakeLogo} alt="Dot Product" />
           <div>
-            <strong>Eigenlake</strong>
+            <strong>Dot Product</strong>
             <span>Platform Console</span>
           </div>
         </div>
@@ -192,7 +192,7 @@ function App() {
       <div className="workspace">
         <header className="topbar">
           <div>
-            <div className="breadcrumbs">app / Eigenlake / main</div>
+            <div className="breadcrumbs">app / Dot Product / main</div>
             <h1>{activeLabel}</h1>
           </div>
           <div className="topbar-actions">
@@ -558,7 +558,7 @@ function DeploymentView() {
         <h3>Single-VM runtime for the full application stack</h3>
         <p className="panel-copy">
           The deployed application depends on long-running services plus a shared SQLite metadata
-          file: Streamlit, worker, Redis, Weaviate, and `/workspace/.data/dotproduct.sqlite3`.
+          file: Streamlit, worker, Redis, Weaviate, and the shared metadata database.
           Because the application and worker share the same SQLite state, the correct deployment
           target is a single VM running Docker Compose.
         </p>

@@ -1,4 +1,4 @@
-# Eigenlake Netlify Frontend
+# Dot Product Netlify Frontend
 
 Standalone frontend prepared for Netlify deployment.
 
